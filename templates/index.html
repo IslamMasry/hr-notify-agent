@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" id="html-root">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HR Notify Agent</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- بيانات التاسك بتتجاب دلوقتي عبر /api/task (مش Jinja مباشرة) عشان الفرونت إند
+       يقدر يتفصل كملف ثابت لوحده على أي هوست، من غير ما يحتاج Python يرندر الصفحة -->
+  <script id="task-data-fallback" type="application/json">{{ task | tojson }}</script>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand" data-i18n="brand">HR Notify Agent</div>
+      <div class="brand-sub" data-i18n="brandSub">Control Panel</div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="lang-toggle" id="notif-toggle" onclick="requestNotificationPermission()" data-i18n="enableNotifs">🔔 Enable notifications</button>
+      <button class="lang-toggle" id="lang-toggle" onclick="toggleLanguage()">العربية</button>
+    </div>
+  </header>
+
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="chat" onclick="switchTab('chat')">
+      <span data-i18n="tabChat">Chat</span>
+    </button>
+    <button class="tab-btn" data-tab="monitor" onclick="switchTab('monitor')">
+      <span data-i18n="tabMonitor">Monitor</span>
+    </button>
+    <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
+      <span data-i18n="tabSettings">Settings</span>
+    </button>
+  </nav>
+
+  <main>
+
+    <!-- =================== CHAT TAB =================== -->
+    <section class="tab-panel" id="tab-chat">
+      <div class="chat-card">
+        <div class="chat-intro">
+          <div>
+            <div class="chat-intro-title" data-i18n="chatIntroTitle">Tell the agent what you need</div>
+            <div class="chat-intro-sub" data-i18n="chatIntroSub">Type or speak a command — e.g. "Email the Sales team asking for this week's numbers by Thursday"</div>
+          </div>
+          <button class="btn-ghost" id="new-conversation-btn" onclick="resetConversation()" data-i18n="newConversation">New conversation</button>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row">
+          <button class="mic-btn" id="mic-btn" onclick="toggleMic()" title="Voice input">
+            <svg id="mic-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <select id="mic-lang-select" class="mic-lang-select">
+            <option value="ar-EG">AR (Egypt)</option>
+            <option value="ar-SA">AR (Standard/Saudi)</option>
+            <option value="ar">AR (generic)</option>
+            <option value="en-US">EN (US)</option>
+          </select>
+          <select id="mic-engine-select" class="mic-lang-select" title="Speech engine">
+            <option value="browser">STT: Browser (Google)</option>
+            <option value="server">STT: Server (OpenAI)</option>
+          </select>
+          <input type="text" id="chat-input" class="chat-input" data-i18n-placeholder="chatPlaceholder" placeholder="Type a command…">
+          <button class="btn-primary" id="chat-send-btn" onclick="sendChatMessage()" data-i18n="chatSend">Send</button>
+        </div>
+        <div id="mic-debug" class="mic-debug"></div>
+      </div>
+    </section>
+
+    <!-- =================== MONITOR TAB =================== -->
+    <section class="tab-panel hidden" id="tab-monitor">
+
+      <div class="monitor-header">
+        <h1 class="monitor-title" data-i18n="monitorTitle">Monitoring</h1>
+        <p class="monitor-sub" data-i18n="monitorSub">All activity across every campaign, email, and call — in one place.</p>
+      </div>
+
+      <section class="section-block">
+        <div class="section-heading" data-i18n="campaignsHeading">Recent Campaigns</div>
+        <div id="campaigns-list"></div>
+      </section>
+
+      <section class="stats-row" id="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label" data-i18n="statTotal">Employees</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value accent" id="stat-submitted">0</div>
+          <div class="stat-label" data-i18n="statEmailsSent">Emails Sent</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-calls">0</div>
+          <div class="stat-label" data-i18n="statCalls">Calls Completed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value amber" id="stat-pending">0</div>
+          <div class="stat-label" data-i18n="statNeedsReply">Needs Your Reply</div>
+        </div>
+      </section>
+
+      <section class="schedule-bar">
+        <div class="schedule-info">
+          <div class="schedule-title" data-i18n="scheduleTitle">Automatic Monitoring</div>
+          <div class="schedule-status" id="schedule-status">—</div>
+        </div>
+        <div class="schedule-controls">
+          <button class="btn-secondary" id="check-updates-btn" onclick="checkUpdatesNow()" data-i18n="btnCheckUpdates">Check for Updates Now</button>
+          <label class="schedule-label" data-i18n="scheduleEvery">Every</label>
+          <input type="number" id="interval-input" min="1" value="60" class="interval-input">
+          <label class="schedule-label" data-i18n="scheduleMinutes">minutes</label>
+          <button class="btn-ghost" id="schedule-toggle-btn" onclick="toggleSchedule()" data-i18n="scheduleEnable">Enable</button>
+        </div>
+      </section>
+
+      <section class="section-block" id="pending-questions-section" style="display:none;">
+        <div class="section-heading" data-i18n="pendingHeading">⚠ Needs Your Reply</div>
+        <div id="pending-questions-list"></div>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading" data-i18n="employeesHeading">Employees</div>
+        <div id="employee-list"></div>
+      </section>
+
+      <section class="section-block audit-section">
+        <div class="section-heading" data-i18n="auditHeading">Audit Log — Last 50</div>
+        <div id="audit-container"></div>
+      </section>
+
+    </section>
+
+    <!-- =================== SETTINGS TAB =================== -->
+    <section class="tab-panel hidden" id="tab-settings">
+      <div class="section-block">
+        <div class="section-heading" data-i18n="settingsAddHeading">Add Employee</div>
+        <div class="add-employee-card">
+          <input type="text" id="new-emp-name" class="settings-input" data-i18n-placeholder="fieldName" placeholder="Name">
+          <input type="email" id="new-emp-email" class="settings-input" data-i18n-placeholder="fieldEmail" placeholder="Email">
+          <input type="text" id="new-emp-phone" class="settings-input" data-i18n-placeholder="fieldPhone" placeholder="Phone (+20...)">
+          <input type="text" id="new-emp-department" class="settings-input" data-i18n-placeholder="fieldDepartment" placeholder="Department">
+          <select id="new-emp-language" class="settings-input">
+            <option value="ar">AR</option>
+            <option value="en">EN</option>
+          </select>
+          <button class="btn-primary" onclick="addEmployee()" data-i18n="btnAddEmployee">Add</button>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <div class="section-heading" data-i18n="settingsListHeading">Employee Directory</div>
+        <div id="settings-table-container"></div>
+      </div>
+
+      <div class="section-block">
+        <div class="section-heading" data-i18n="kbHeading">Company Policies / Knowledge Base</div>
+        <p class="task-desc" data-i18n="kbDesc" style="margin-bottom:12px;">
+          Used by the agent to auto-answer routine employee questions. Anything not covered here gets escalated to you.
+        </p>
+        <textarea id="kb-textarea" class="kb-textarea" rows="8"></textarea>
+        <button class="btn-primary" style="margin-top:10px;" onclick="saveKnowledgeBase()" data-i18n="kbSave">Save Policies</button>
+      </div>
+    </section>
+
+  </main>
+
+<script>
+// ============================================================
+// إعداد الاتصال بالـ Backend
+// ============================================================
+// لو الفرونت إند والباك إند شغالين مع بعض من نفس السيرفر (uvicorn عادي)، سيبها فاضية "".
+// لو رفعت الفرونت إند لوحده على هوست تاني (Netlify/Vercel/GitHub Pages)، حط هنا
+// رابط الباك إند بتاعك (لازم يكون HTTPS - زي رابط ngrok، وإلا المتصفح هيرفض الاتصال):
+const API_BASE = ""; // مثال: "https://xxxx-xx-xx.ngrok-free.app"
+
+function apiUrl(path) { return API_BASE + path; }
+</script>
+
+<script>
+// ============ i18n ============
+const I18N = {
+  en: {
+    brand: "HR Notify Agent", brandSub: "Control Panel", langToggle: "العربية",
+    tabChat: "Chat", tabMonitor: "Monitor", tabSettings: "Settings",
+    chatIntroTitle: "Tell the agent what you need",
+    chatIntroSub: 'Type or speak a command — e.g. "Email the Sales team asking for this week\'s numbers by Thursday"',
+    chatPlaceholder: "Type a command…", chatSend: "Send", newConversation: "New conversation", enableNotifs: "🔔 Enable notifications",
+    planChannel: "Channel", planRecipients: "Recipients", planReasoning: "How I resolved this",
+    planApprove: "Approve & Execute", planCancel: "Cancel", planExecuting: "Executing…",
+    planExecuted: "Done", channelEmail: "Email", channelCall: "Call", channelBoth: "Email + Call",
+    taskEyebrow: "BUILT-IN TASK / EMPLOYEE VIEW", deadlineLabel: "Deadline",
+    campaignsHeading: "Recent Campaigns", campaignsEmpty: "No campaigns run yet.",
+    campaignActions: "actions", campaignEmails: "emails", campaignCalls: "calls", campaignLastActive: "Last active",
+    statTotal: "Employees", statSubmitted: "Submitted", statPending: "Pending", statCalls: "Calls Completed",
+    controlsEmail: "Email", controlsVoice: "Voice",
+    btnGenerateDrafts: "Generate Drafts", btnGenerating: "Generating…",
+    btnSendAll: "Send All Approved", btnSendingAll: "Sending…",
+    btnCheckCompliance: "Check Submissions", btnChecking: "Checking…", btnCheckUpdates: "Check for Updates Now",
+    btnCallAll: "Call All (Initial Request)", btnCallingAll: "Calling…",
+    scheduleTitle: "Automatic Compliance Check", scheduleEvery: "Every", scheduleMinutes: "minutes",
+    scheduleEnable: "Enable", scheduleDisable: "Disable",
+    scheduleRunning: (m, next, last, count) => `Running every ${m} min — next check: ${next}` + (last ? ` | last check: ${last} (${count} employees)` : ""),
+    scheduleStopped: "Stopped — checks run manually only",
+    employeesHeading: "Employees", auditHeading: "Audit Log — Last 50",
+    statusPending: "Pending", statusDraftReady: "Draft Ready", statusSent: "Sent ✓",
+    statusDraftFailed: "Draft Failed", statusSendFailed: "Send Failed",
+    callNotCalled: "Not Called", callQueued: "Queued", callInProgress: "In Progress",
+    callEnded: "Call Ended", callFailed: "Call Failed",
+    complianceUnchecked: "Not checked yet", complianceSubmitted: "Submitted ✓",
+    compliancePending: "Not submitted yet", complianceOverdue: "Overdue ⚠",
+    btnApproveSend: "Approve & Send", btnSent: "Sent",
+    btnCallEmployee: "Call Employee", btnCalling: "Calling…",
+    btnFollowup: "Follow-up Call", btnUpdateCall: "Update Call Status",
+    transcriptLabel: "Call Transcript",
+    auditTime: "Time", auditEmployee: "Employee", auditChannel: "Channel", auditStatus: "Status", auditOutcome: "Call Outcome", auditError: "Error",
+    auditEmpty: "No actions logged yet", employeesEmpty: "No employees found in employees.csv",
+    settingsAddHeading: "Add Employee", settingsListHeading: "Employee Directory",
+    fieldName: "Name", fieldEmail: "Email", fieldPhone: "Phone (+20...)", fieldDepartment: "Department",
+    btnAddEmployee: "Add", btnSave: "Save", btnEdit: "Edit", btnDelete: "Delete", btnCancelEdit: "Cancel",
+    colName: "Name", colEmail: "Email", colPhone: "Phone", colDepartment: "Department", colLanguage: "Language", colActions: "Actions",
+    micNotSupported: "Voice input isn't supported in this browser.",
+    micListening: "Listening… (pause to finish)",
+    micTranscribing: "Transcribing…",
+    micError: "Couldn't access the microphone. Check browser permissions.",
+    micTranscribeError: "Failed to transcribe audio. Please try again or type your command.",
+    pendingHeading: "⚠ Needs Your Reply", pendingSend: "Send Reply",
+    pendingChannelCall: "From a call", pendingChannelEmail: "From an email",
+    kbHeading: "Company Policies / Knowledge Base",
+    kbDesc: "Used by the agent to auto-answer routine employee questions. Anything not covered here gets escalated to you.",
+    kbSave: "Save Policies",
+  },
+  ar: {
+    brand: "وكيل تبليغ الموارد البشرية", brandSub: "لوحة التحكم", langToggle: "English",
+    tabChat: "المحادثة", tabMonitor: "المتابعة", tabSettings: "الإعدادات",
+    chatIntroTitle: "قول للـ agent محتاج إيه",
+    chatIntroSub: 'اكتب أو اتكلم بأمر — مثلاً "ابعت إيميل لفريق المبيعات تطلب أرقام الأسبوع ده قبل الخميس"',
+    chatPlaceholder: "اكتب أمرك...", chatSend: "ابعت", newConversation: "محادثة جديدة", enableNotifs: "🔔 فعّل الإشعارات",
+    planChannel: "القناة", planRecipients: "المستلمين", planReasoning: "إزاي حددت ده",
+    planApprove: "اعتماد وتنفيذ", planCancel: "إلغاء", planExecuting: "بينفذ...",
+    planExecuted: "خلص", channelEmail: "إيميل", channelCall: "مكالمة", channelBoth: "إيميل + مكالمة",
+    taskEyebrow: "عرض التاسك المدمجة / الموظفين", deadlineLabel: "الديدلاين",
+    campaignsHeading: "الحملات الأخيرة", campaignsEmpty: "مفيش حملات اتنفذت لسه.",
+    campaignActions: "عملية", campaignEmails: "إيميل", campaignCalls: "مكالمة", campaignLastActive: "آخر نشاط",
+    statTotal: "الموظفين", statSubmitted: "بعتوا", statPending: "لسه", statCalls: "مكالمات اتعملت",
+    controlsEmail: "الإيميل", controlsVoice: "المكالمات",
+    btnGenerateDrafts: "ولّد كل المسودات", btnGenerating: "بيولّد...",
+    btnSendAll: "ابعت كل المعتمد", btnSendingAll: "بيبعت...",
+    btnCheckCompliance: "تحقق من الإيميلات", btnChecking: "بيتحقق...", btnCheckUpdates: "تحقق من التحديثات",
+    btnCallAll: "اتصل بالكل (طلب أولي)", btnCallingAll: "بيتصل...",
+    scheduleTitle: "فحص تلقائي دوري", scheduleEvery: "كل", scheduleMinutes: "دقيقة",
+    scheduleEnable: "تفعيل", scheduleDisable: "إيقاف",
+    scheduleRunning: (m, next, last, count) => `شغال كل ${m} دقيقة — الفحص الجاي: ${next}` + (last ? ` | آخر فحص: ${last} (${count} موظف)` : ""),
+    scheduleStopped: "متوقف حاليًا — الفحص بيتم يدويًا بس",
+    employeesHeading: "الموظفين", auditHeading: "سجل العمليات — آخر 50",
+    statusPending: "لسه", statusDraftReady: "مسودة جاهزة", statusSent: "اتبعت ✓",
+    statusDraftFailed: "فشلت الصياغة", statusSendFailed: "فشل الإرسال",
+    callNotCalled: "معملتش مكالمة", callQueued: "المكالمة في الطابور", callInProgress: "المكالمة شغالة",
+    callEnded: "المكالمة خلصت", callFailed: "فشلت المكالمة",
+    complianceUnchecked: "لسه معملناش تحقق", complianceSubmitted: "بعت التقرير ✓",
+    compliancePending: "لسه ملبعتش", complianceOverdue: "متأخر ⚠",
+    btnApproveSend: "اعتمد وابعت", btnSent: "اتبعت",
+    btnCallEmployee: "اتصل بالموظف", btnCalling: "بيتصل...",
+    btnFollowup: "اعمل مكالمة متابعة", btnUpdateCall: "تحديث حالة المكالمة",
+    transcriptLabel: "نص المكالمة",
+    auditTime: "الوقت", auditEmployee: "الموظف", auditChannel: "القناة", auditStatus: "الحالة", auditOutcome: "نتيجة المكالمة", auditError: "خطأ",
+    auditEmpty: "مفيش عمليات مسجلة لسه", employeesEmpty: "مفيش موظفين في employees.csv",
+    settingsAddHeading: "إضافة موظف", settingsListHeading: "دليل الموظفين",
+    fieldName: "الاسم", fieldEmail: "الإيميل", fieldPhone: "التليفون (+20...)", fieldDepartment: "القسم",
+    btnAddEmployee: "إضافة", btnSave: "حفظ", btnEdit: "تعديل", btnDelete: "حذف", btnCancelEdit: "إلغاء",
+    colName: "الاسم", colEmail: "الإيميل", colPhone: "التليفون", colDepartment: "القسم", colLanguage: "اللغة", colActions: "إجراءات",
+    micNotSupported: "المتصفح ده مش بيدعم الإدخال الصوتي.",
+    micListening: "بيسمع... (اسكت شوية عشان يوقف)",
+    micTranscribing: "بيحوّل الصوت لنص...",
+    micError: "معنديش وصول للمايك. راجع صلاحيات المتصفح.",
+    micTranscribeError: "فشل تحويل الصوت لنص. جرب تاني أو اكتب الأمر.",
+    pendingHeading: "⚠ محتاج ردك", pendingSend: "ابعت الرد",
+    pendingChannelCall: "من مكالمة", pendingChannelEmail: "من إيميل",
+    kbHeading: "سياسات الشركة / قاعدة المعرفة",
+    kbDesc: "الـ agent بيستخدمها عشان يرد لوحده على أسئلة الموظفين الروتينية. أي حاجة مش موجودة هنا بتتصعّد لك.",
+    kbSave: "احفظ السياسات",
+  },
+};
+
+let LANG = "en";
+let ACTIVE_TAB = "chat";
+const TASK_FALLBACK = JSON.parse(document.getElementById("task-data-fallback").textContent);
+let TASK = TASK_FALLBACK;
+
+async function loadTask() {
+  try {
+    const res = await fetch(apiUrl("/api/task"));
+    if (res.ok) TASK = await res.json();
+  } catch (e) {
+    // مفيش اتصال بالـ backend لحظة التحميل - نفضل نستخدم TASK_FALLBACK
+    console.warn("Could not fetch /api/task, using fallback:", e);
+  }
+}
+
+function t(key) { return I18N[LANG][key] || key; }
+
+function applyStaticTranslations() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (I18N[LANG][key]) el.textContent = I18N[LANG][key];
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+    const key = el.getAttribute("data-i18n-placeholder");
+    if (I18N[LANG][key]) el.placeholder = I18N[LANG][key];
+  });
+  document.getElementById("lang-toggle").textContent = t("langToggle");
+  document.getElementById("html-root").setAttribute("lang", LANG);
+  document.getElementById("html-root").setAttribute("dir", LANG === "ar" ? "rtl" : "ltr");
+}
+
+function toggleLanguage() {
+  LANG = LANG === "en" ? "ar" : "en";
+  applyStaticTranslations();
+  fetchEmployees(); fetchAudit(); fetchSchedule(); fetchSettingsEmployees();
+}
+
+function switchTab(tabName) {
+  ACTIVE_TAB = tabName;
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.add("hidden"));
+  document.getElementById(`tab-${tabName}`).classList.remove("hidden");
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tabName));
+  if (tabName === "settings") { fetchSettingsEmployees(); fetchKnowledgeBase(); }
+}
+
+// ============ Chat ============
+function addChatBubble(role, contentHtml) {
+  const container = document.getElementById("chat-messages");
+  const bubble = document.createElement("div");
+  bubble.className = `chat-bubble ${role}`;
+  bubble.innerHTML = contentHtml;
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+  return bubble;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div"); d.textContent = s; return d.innerHTML;
+}
+
+async function resetConversation() {
+  document.getElementById("chat-messages").innerHTML = "";
+  await fetch(apiUrl("/api/chat/reset"), { method: "POST" });
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById("chat-input");
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = "";
+
+  addChatBubble("user", escapeHtml(message));
+  const thinkingBubble = addChatBubble("assistant", `<span class="chat-thinking">…</span>`);
+
+  try {
+    const res = await fetch(apiUrl("/api/chat"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    const data = await res.json();
+    thinkingBubble.remove();
+
+    if (data.type === "clarification") {
+      addChatBubble("assistant", escapeHtml(data.text));
+      return;
+    }
+
+    renderPlanBubble(data);
+  } catch (e) {
+    thinkingBubble.remove();
+    addChatBubble("assistant", "⚠ " + escapeHtml(String(e)));
+  }
+}
+
+function renderPlanBubble(plan) {
+  const channelLabel = { email: t("channelEmail"), call: t("channelCall"), both: t("channelBoth") }[plan.channel] || plan.channel;
+  const title = LANG === "ar" ? plan.title : plan.title_en;
+  const announcement = LANG === "ar" ? plan.announcement : plan.announcement_en;
+  const request = LANG === "ar" ? plan.request : plan.request_en;
+  const deadline = LANG === "ar" ? plan.deadline : plan.deadline_en;
+  const names = plan.recipients_detail.map(r => r.name).join(", ");
+
+  const html = `
+    <div class="plan-card" id="plan-${plan.id}">
+      <div class="plan-header">
+        <span class="badge draft_ready">${channelLabel}</span>
+        <strong>${escapeHtml(title)}</strong>
+      </div>
+      <div class="plan-row"><span class="plan-label">${t("planRecipients")}:</span> ${escapeHtml(names)}</div>
+      <div class="plan-body">${escapeHtml(announcement)} ${escapeHtml(request)} ${deadline ? "— " + escapeHtml(deadline) : ""}</div>
+      <div class="plan-row plan-reasoning">${t("planReasoning")}: ${escapeHtml(plan.reasoning || "")}</div>
+      <div class="plan-actions">
+        <button class="btn-accent" onclick="approvePlan('${plan.id}', this)">${t("planApprove")}</button>
+        <button class="btn-ghost" onclick="this.closest('.plan-card').remove()">${t("planCancel")}</button>
+      </div>
+    </div>`;
+  addChatBubble("assistant", html);
+}
+
+async function approvePlan(planId, btnEl) {
+  btnEl.disabled = true; btnEl.textContent = t("planExecuting");
+  try {
+    const res = await fetch(apiUrl(`/api/chat/execute/${planId}`), { method: "POST" });
+    const data = await res.json();
+    const card = document.getElementById(`plan-${planId}`);
+    const resultLines = data.results.map(r => {
+      const parts = [];
+      if (r.email_status) parts.push(`📧 ${r.email_status}`);
+      if (r.call_status) parts.push(`📞 ${r.call_status}`);
+      return `${r.name}: ${parts.join(" · ") || r.status || ""}`;
+    }).join("<br>");
+    card.querySelector(".plan-actions").innerHTML = `<div class="plan-result">✓ ${t("planExecuted")}<br>${resultLines}</div>`;
+  } catch (e) {
+    btnEl.disabled = false; btnEl.textContent = t("planApprove");
+    alert("Failed: " + e);
+  } finally {
+    await fetchEmployees(); await fetchAudit();
+  }
+}
+
+// ============ Mic: طريقتين (Browser Web Speech API / Server عبر OpenAI) ============
+let recognition = null;
+let isRecording = false;
+let mediaRecorder = null;
+let audioChunks = [];
+
+function micDebug(msg) {
+  const el = document.getElementById("mic-debug");
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement("div");
+  line.textContent = `[${time}] ${msg}`;
+  el.appendChild(line);
+  while (el.children.length > 8) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+  console.log("[mic]", msg);
+}
+
+function getSpeechRecognition() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function toggleMic() {
+  if (isRecording) { stopRecording(); return; }
+  document.getElementById("mic-debug").innerHTML = "";
+
+  const engine = document.getElementById("mic-engine-select").value;
+  if (engine === "server") startServerRecording();
+  else startBrowserRecognition();
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recognition) recognition.stop();
+  if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+}
+
+// ---------- الطريقة 1: Web Speech API (بيحصل جوه المتصفح، محتاج جوجل accessible) ----------
+function startBrowserRecognition() {
+  micDebug("Checking browser support…");
+  const SpeechRecognitionClass = getSpeechRecognition();
+  if (!SpeechRecognitionClass) {
+    micDebug("❌ SpeechRecognition API not found on window object.");
+    alert(t("micNotSupported"));
+    return;
+  }
+  micDebug("API found. Checking secure context: " + window.isSecureContext);
+
+  if (!window.isSecureContext) {
+    micDebug("❌ Not a secure context (needs https:// or localhost).");
+    alert("Not a secure context - open this page via https:// or localhost.");
+    return;
+  }
+
+  recognition = new SpeechRecognitionClass();
+  recognition.lang = document.getElementById("mic-lang-select").value;
+  recognition.interimResults = true;
+  recognition.continuous = false;
+
+  const input = document.getElementById("chat-input");
+  const micBtn = document.getElementById("mic-btn");
+
+  recognition.onstart = () => {
+    isRecording = true;
+    micBtn.classList.add("listening");
+    input.placeholder = t("micListening");
+    micDebug("🎙️ Listening… (lang=" + recognition.lang + ")");
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = "";
+    for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
+    input.value = transcript;
+    micDebug("✏️ Heard: " + transcript);
+  };
+
+  recognition.onspeechstart = () => micDebug("🗣️ Speech detected…");
+  recognition.onaudiostart = () => micDebug("🔊 Audio capture started…");
+
+  recognition.onerror = (event) => {
+    micDebug("❌ Error: " + event.error);
+    if (event.error === "no-speech") {
+      micDebug("ℹ️ 'no-speech' can mean Google's speech service is unreachable from this network (VPN/firewall), not just silence. Try 'STT: Server (OpenAI)' instead.");
+      return;
+    }
+    if (event.error === "aborted") return;
+    if (event.error === "network") {
+      alert("Network error from the speech service (Google). Try 'STT: Server (OpenAI)' instead.");
+      return;
+    }
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      alert("Mic access blocked. Check site permissions in Chrome settings.");
+      return;
+    }
+    alert(t("micError") + " (" + event.error + ")");
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    micBtn.classList.remove("listening");
+    micDebug("⏹️ Ended. Final text: " + (input.value || "(empty)"));
+    applyStaticTranslations();
+  };
+
+  try {
+    micDebug("Requesting mic permission / starting…");
+    recognition.start();
+  } catch (err) {
+    micDebug("❌ start() threw: " + err.message);
+    alert(t("micError"));
+  }
+}
+
+// ---------- الطريقة 2: تسجيل + رفع للسيرفر (بيكلم OpenAI، مش محتاج جوجل خالص) ----------
+function pickSupportedMimeType() {
+  const candidates = ["audio/webm", "audio/mp4", "audio/ogg"];
+  for (const type of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return "";
+}
+
+async function startServerRecording() {
+  micDebug("Requesting mic permission (server mode)…");
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    micDebug("❌ MediaRecorder not supported in this browser.");
+    alert(t("micNotSupported"));
+    return;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    micDebug("❌ getUserMedia failed: " + err.message);
+    alert(t("micError"));
+    return;
+  }
+
+  audioChunks = [];
+  const mimeType = pickSupportedMimeType();
+  mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  micDebug("🔊 Recording started (mimeType=" + (mimeType || "default") + ")");
+
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    stream.getTracks().forEach(tr => tr.stop());
+    micDebug("⏹️ Recording stopped, uploading to server…");
+    await sendAudioForTranscription(mimeType || "audio/webm");
+  };
+
+  mediaRecorder.start();
+  isRecording = true;
+  document.getElementById("mic-btn").classList.add("listening");
+  document.getElementById("chat-input").placeholder = t("micListening");
+}
+
+async function sendAudioForTranscription(mimeType) {
+  const input = document.getElementById("chat-input");
+  const micBtn = document.getElementById("mic-btn");
+  input.placeholder = t("micTranscribing");
+  micBtn.classList.remove("listening");
+  micBtn.disabled = true;
+
+  try {
+    const blob = new Blob(audioChunks, { type: mimeType });
+    const formData = new FormData();
+    formData.append("file", blob, "command.webm");
+
+    const res = await fetch(apiUrl("/api/transcribe"), { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "transcription failed");
+    }
+    const data = await res.json();
+    input.value = data.text || "";
+    micDebug("✏️ Transcribed: " + (data.text || "(empty)"));
+  } catch (err) {
+    micDebug("❌ " + err.message);
+    alert(t("micTranscribeError"));
+  } finally {
+    micBtn.disabled = false;
+    applyStaticTranslations();
+  }
+}
+
+document.getElementById("chat-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendChatMessage();
+});
+
+// ============ Employees (Monitor tab) ============
+async function fetchEmployees() {
+  const res = await fetch(apiUrl("/api/employees"));
+  const employees = await res.json();
+  renderStats(employees);
+  renderEmployees(employees);
+  fetchPendingQuestions();
+  fetchCampaigns();
+}
+
+// ============ Recent Campaigns (كل التاسكات اللي اتنفذت، مش تاسك واحدة) ============
+async function fetchCampaigns() {
+  const res = await fetch(apiUrl("/api/campaigns-summary"));
+  const campaigns = await res.json();
+  const container = document.getElementById("campaigns-list");
+
+  if (campaigns.length === 0) {
+    container.innerHTML = `<div class="empty-state">${t("campaignsEmpty")}</div>`;
+    return;
+  }
+
+  container.innerHTML = campaigns.map(c => `
+    <div class="campaign-card">
+      <div class="campaign-title">${c.task_title}</div>
+      <div class="campaign-meta">
+        <span>${c.total_actions} ${t("campaignActions")}</span>
+        <span>${c.email_count} ${t("campaignEmails")}</span>
+        <span>${c.call_count} ${t("campaignCalls")}</span>
+        <span>${t("campaignLastActive")}: ${formatTime(c.last_action_at)}</span>
+      </div>
+    </div>
+  `).join("");
+}
+
+// ============ Pending Questions (تحتاج رد HR Manager) ============
+let KNOWN_PENDING_IDS = new Set();
+
+async function fetchPendingQuestions() {
+  const res = await fetch(apiUrl("/api/pending-questions"));
+  const pending = await res.json();
+  const section = document.getElementById("pending-questions-section");
+  const container = document.getElementById("pending-questions-list");
+
+  notifyIfNewPending(pending);
+  updatePendingBadge(pending.length);
+
+  if (pending.length === 0) {
+    section.style.display = "none";
+    return;
+  }
+  section.style.display = "block";
+
+  container.innerHTML = pending.map(p => {
+    const isCall = p.channel === "call";
+    const channelLabel = isCall ? t("pendingChannelCall") : t("pendingChannelEmail");
+    return `
+    <div class="pending-card">
+      <div class="pending-header">
+        <strong>${p.employee_name}</strong>
+        <div style="display:flex; gap:8px;">
+          <span class="badge ${isCall ? 'in-progress' : 'pending'}">${channelLabel}</span>
+          <span class="badge draft_ready">${p.classification}</span>
+        </div>
+      </div>
+      <div class="pending-summary">${p.summary || ""}</div>
+      <div class="pending-original ${isCall ? 'pending-transcript' : ''}">"${escapeHtml(p.reply_text)}"</div>
+      <div class="pending-answer-row">
+        <input type="text" class="settings-input pending-answer-input" id="answer-${cssSafe(p.email)}"
+               placeholder="${LANG === 'ar' ? 'اكتب ردك هنا...' : 'Type your reply…'}">
+        <button class="btn-accent" onclick="sendManagerAnswer('${p.email}')">${t("pendingSend")}</button>
+      </div>
+    </div>
+  `;
+  }).join("");
+}
+
+// ============ إشعارات المتصفح للردود الجديدة المحتاجة رد ============
+function requestNotificationPermission() {
+  if (!("Notification" in window)) {
+    alert(LANG === "ar" ? "المتصفح ده مش بيدعم الإشعارات" : "This browser doesn't support notifications");
+    return;
+  }
+  if (Notification.permission === "granted") {
+    new Notification(LANG === "ar" ? "الإشعارات شغالة ✓" : "Notifications are on ✓");
+    return;
+  }
+  Notification.requestPermission().then(updateNotifButton);
+}
+
+function updateNotifButton() {
+  const btn = document.getElementById("notif-toggle");
+  if (!("Notification" in window)) { btn.style.display = "none"; return; }
+  if (Notification.permission === "granted") {
+    btn.textContent = LANG === "ar" ? "🔔 الإشعارات شغالة" : "🔔 Notifications on";
+  } else if (Notification.permission === "denied") {
+    btn.textContent = LANG === "ar" ? "🔕 الإشعارات ممنوعة (راجع إعدادات المتصفح)" : "🔕 Notifications blocked (check browser settings)";
+  }
+}
+
+function notifyIfNewPending(pending) {
+  const currentIds = new Set(pending.map(p => p.email + "|" + p.classification));
+  const newOnes = pending.filter(p => !KNOWN_PENDING_IDS.has(p.email + "|" + p.classification));
+
+  // أول مرة بس (KNOWN_PENDING_IDS فاضية) - سجّل من غير إشعار عشان متتنبهش على حاجات قديمة
+  if (KNOWN_PENDING_IDS.size > 0 && newOnes.length > 0 && "Notification" in window && Notification.permission === "granted") {
+    newOnes.forEach(p => {
+      const n = new Notification(LANG === "ar" ? "رد جديد محتاج مراجعتك" : "New reply needs your review", {
+        body: `${p.employee_name}: ${p.summary || p.classification}`,
+        tag: p.email,
+      });
+      n.onclick = () => { window.focus(); switchTab("monitor"); };
+    });
+  }
+  KNOWN_PENDING_IDS = currentIds;
+}
+
+function updatePendingBadge(count) {
+  const statEl = document.getElementById("stat-pending");
+  if (statEl) statEl.textContent = count;
+
+  const btn = document.querySelector('.tab-btn[data-tab="monitor"]');
+  let badge = btn.querySelector(".tab-badge");
+  if (count > 0) {
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "tab-badge";
+      btn.appendChild(badge);
+    }
+    badge.textContent = count;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+function cssSafe(email) { return email.replace(/[^a-zA-Z0-9]/g, "_"); }
+
+async function sendManagerAnswer(email) {
+  const input = document.getElementById(`answer-${cssSafe(email)}`);
+  const answer = input.value.trim();
+  if (!answer) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/pending-questions/${encodeURIComponent(email)}/answer`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answer }),
+    });
+    if (!res.ok) { const err = await res.json(); alert("Failed: " + (err.detail || "unknown error")); return; }
+  } finally {
+    await fetchPendingQuestions();
+    await fetchAudit();
+  }
+}
+
+function renderStats(employees) {
+  document.getElementById("stat-total").textContent = employees.length;
+  // ملحوظة: stat-submitted (Emails Sent) و stat-calls (Calls Completed) بيتحدثوا من
+  // fetchAudit() لأنهم لازم يعكسوا كل السجلات التاريخية، مش بس حالة الموظفين الحالية
+}
+
+function renderEmployees(employees) {
+  const container = document.getElementById("employee-list");
+  if (employees.length === 0) {
+    container.innerHTML = `<div class="empty-state">${t("employeesEmpty")}</div>`;
+    return;
+  }
+
+  const CALL_KEY = { not_called: "callNotCalled", queued: "callQueued", "in-progress": "callInProgress",
+    ended: "callEnded", call_failed: "callFailed" };
+
+  container.innerHTML = employees.map(emp => {
+    const callStatus = emp.call_status || "not_called";
+    const callInProgress = callStatus === "queued" || callStatus === "in-progress";
+
+    let complianceLabel = t("complianceUnchecked");
+    let complianceBadgeClass = "pending";
+    if (emp.submitted === true) {
+      complianceLabel = t("complianceSubmitted"); complianceBadgeClass = "sent";
+    } else if (emp.submitted === false) {
+      complianceLabel = emp.overdue ? t("complianceOverdue") : t("compliancePending");
+      complianceBadgeClass = emp.overdue ? "send_failed" : "draft_ready";
+    }
+    const showFollowup = emp.submitted === false && !callInProgress && emp.phone;
+
+    return `
+      <div class="employee-card">
+        <div class="employee-row">
+          <div>
+            <div class="employee-name">${emp.name}</div>
+            <div class="employee-email">${emp.email}${emp.phone ? " · " + emp.phone : ""}${emp.department ? " · " + emp.department : ""}</div>
+          </div>
+          <div class="employee-actions">
+            <span class="badge ${callStatus}">${t(CALL_KEY[callStatus] || callStatus)}</span>
+            <button class="btn-primary" ${!emp.phone || callInProgress ? "disabled" : ""} onclick="callOne('${emp.email}', this)">
+              ${callInProgress ? t("btnCalling") : t("btnCallEmployee")}
+            </button>
+          </div>
+        </div>
+
+        <div class="compliance-row">
+          <span class="badge ${complianceBadgeClass}">${complianceLabel}</span>
+          ${emp.note ? `<span class="compliance-note">${emp.note}</span>` : ""}
+          ${showFollowup ? `<button class="btn-ghost followup-btn" onclick="followupOne('${emp.email}', this)">${t("btnFollowup")}</button>` : ""}
+        </div>
+
+        ${emp.transcript ? `
+          <div class="draft-preview">
+            <div class="draft-subject">${t("transcriptLabel")}</div>
+            ${emp.outcome_label_ar ? `<div class="call-outcome ${emp.outcome || ''}">${emp.outcome_label_ar}</div>` : ""}
+            ${emp.vapi_summary ? `<div class="vapi-summary">📋 ${emp.vapi_summary}</div>` : ""}
+            <div class="draft-body mono">${emp.transcript}</div>
+            <button class="btn-ghost" onclick="refreshCallStatus('${emp.email}')">${t("btnUpdateCall")}</button>
+          </div>` : ""}
+
+        ${emp.error ? `<div class="error-text">⚠ ${emp.error}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+async function generateDrafts() {
+  const btn = document.getElementById("generate-btn");
+  btn.disabled = true; btn.textContent = t("btnGenerating");
+  try {
+    const res = await fetch(apiUrl("/api/generate"), { method: "POST" });
+    const employees = await res.json();
+    renderStats(employees); renderEmployees(employees);
+  } finally { btn.disabled = false; btn.textContent = t("btnGenerateDrafts"); }
+}
+
+async function sendOne(email, btnEl) {
+  btnEl.disabled = true; btnEl.textContent = "…";
+  try {
+    const res = await fetch(apiUrl(`/api/send/${encodeURIComponent(email)}`), { method: "POST" });
+    if (!res.ok) { const err = await res.json(); alert("Failed: " + (err.detail || "unknown error")); }
+  } finally { await fetchEmployees(); await fetchAudit(); }
+}
+
+async function sendAll() {
+  const btn = document.getElementById("send-all-btn");
+  btn.disabled = true; btn.textContent = t("btnSendingAll");
+  try {
+    const res = await fetch(apiUrl("/api/employees"));
+    const employees = await res.json();
+    const ready = employees.filter(e => e.status === "draft_ready" || e.status === "send_failed");
+    for (const emp of ready) {
+      try { await fetch(apiUrl(`/api/send/${encodeURIComponent(emp.email)}`), { method: "POST" }); }
+      catch (e) { /* continue with next employee even if one fails */ }
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = t("btnSendAll");
+    await fetchEmployees(); await fetchAudit();
+  }
+}
+
+async function callOne(email, btnEl) {
+  btnEl.disabled = true; btnEl.textContent = t("btnCalling");
+  try {
+    const res = await fetch(apiUrl(`/api/call/${encodeURIComponent(email)}`), { method: "POST" });
+    if (!res.ok) { const err = await res.json(); alert("Failed: " + (err.detail || "unknown error")); }
+  } finally { await fetchEmployees(); await fetchAudit(); }
+}
+
+async function callAll() {
+  const btn = document.getElementById("call-all-btn");
+  btn.disabled = true; btn.textContent = t("btnCallingAll");
+  try { await fetch(apiUrl("/api/campaign/call-all"), { method: "POST" }); }
+  finally { btn.disabled = false; btn.textContent = t("btnCallAll"); await fetchEmployees(); await fetchAudit(); }
+}
+
+async function checkCompliance() {
+  const btn = document.getElementById("check-btn");
+  btn.disabled = true; btn.textContent = t("btnChecking");
+  try { await fetch(apiUrl("/api/campaign/check-compliance"), { method: "POST" }); }
+  finally { btn.disabled = false; btn.textContent = t("btnCheckCompliance"); await fetchEmployees(); }
+}
+
+async function followupOne(email, btnEl) {
+  btnEl.disabled = true; btnEl.textContent = "…";
+  try {
+    const res = await fetch(apiUrl(`/api/campaign/followup/${encodeURIComponent(email)}`), { method: "POST" });
+    if (!res.ok) { const err = await res.json(); alert("Failed: " + (err.detail || "unknown error")); }
+  } finally { await fetchEmployees(); await fetchAudit(); }
+}
+
+async function refreshCallStatus(email) {
+  try { await fetch(apiUrl(`/api/call-status/${encodeURIComponent(email)}`)); }
+  finally { await fetchEmployees(); await fetchAudit(); }
+}
+
+// ============ Schedule ============
+function formatTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString(LANG === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+}
+
+async function fetchSchedule() {
+  const res = await fetch(apiUrl("/api/schedule"));
+  renderSchedule(await res.json());
+}
+
+function renderSchedule(data) {
+  document.getElementById("interval-input").value = data.interval_minutes;
+  const btn = document.getElementById("schedule-toggle-btn");
+  btn.textContent = data.enabled ? t("scheduleDisable") : t("scheduleEnable");
+  btn.className = data.enabled ? "btn-primary" : "btn-ghost";
+
+  const statusEl = document.getElementById("schedule-status");
+  statusEl.textContent = data.enabled
+    ? t("scheduleRunning")(data.interval_minutes, formatTime(data.next_run), data.last_run ? formatTime(data.last_run) : null, data.last_run_count)
+    : t("scheduleStopped");
+}
+
+async function toggleSchedule() {
+  const btn = document.getElementById("schedule-toggle-btn");
+  const currentlyEnabled = btn.textContent.trim() === t("scheduleDisable");
+  const interval = parseInt(document.getElementById("interval-input").value, 10) || 60;
+  btn.disabled = true;
+  try {
+    const res = await fetch(apiUrl("/api/schedule"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ interval_minutes: interval, enabled: !currentlyEnabled }),
+    });
+    renderSchedule(await res.json());
+  } finally { btn.disabled = false; }
+}
+
+// ============ Audit ============
+async function fetchAudit() {
+  const res = await fetch(apiUrl("/api/audit"));
+  const rows = await res.json();
+  const container = document.getElementById("audit-container");
+
+  // إحصائيات عامة من كل السجلات - مش مربوطة بتاسك واحدة
+  document.getElementById("stat-submitted").textContent = rows.filter(r => r.channel === "email" && r.status === "sent").length;
+  document.getElementById("stat-calls").textContent = rows.filter(r => r.channel === "call" && r.status === "call_ended").length;
+
+  if (rows.length === 0) { container.innerHTML = `<div class="empty-state">${t("auditEmpty")}</div>`; return; }
+  container.innerHTML = `
+    <div class="audit-table-wrap">
+    <table class="audit-table mono">
+      <thead><tr><th>${t("auditTime")}</th><th>${t("auditEmployee")}</th><th>${t("auditChannel")}</th><th>${t("auditStatus")}</th><th>${t("auditOutcome")}</th><th>${t("auditError")}</th></tr></thead>
+      <tbody>${rows.map(r => `
+        <tr>
+          <td>${r.timestamp.slice(0, 19).replace("T", " ")}</td>
+          <td>${r.employee_name}</td>
+          <td>${r.channel || "email"}</td>
+          <td>${r.status}</td>
+          <td>${r.call_outcome || "—"}</td>
+          <td>${r.error || "—"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+async function checkUpdatesNow() {
+  const btn = document.getElementById("check-updates-btn");
+  btn.disabled = true;
+  btn.textContent = t("btnChecking");
+  try {
+    await fetch(apiUrl("/api/monitor/check-updates"), { method: "POST" });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t("btnCheckUpdates");
+    await fetchEmployees();
+    await fetchAudit();
+  }
+}
+
+// ============ Settings (Employee CRUD) ============
+async function fetchSettingsEmployees() {
+  const res = await fetch(apiUrl("/api/settings/employees"));
+  renderSettingsTable(await res.json());
+}
+
+function renderSettingsTable(employees) {
+  const container = document.getElementById("settings-table-container");
+  if (employees.length === 0) {
+    container.innerHTML = `<div class="empty-state">${t("employeesEmpty")}</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <table class="audit-table settings-table">
+      <thead><tr>
+        <th>${t("colName")}</th><th>${t("colEmail")}</th><th>${t("colPhone")}</th>
+        <th>${t("colDepartment")}</th><th>${t("colLanguage")}</th><th>${t("colActions")}</th>
+      </tr></thead>
+      <tbody id="settings-tbody">
+        ${employees.map(emp => settingsRowHtml(emp)).join("")}
+      </tbody>
+    </table>`;
+}
+
+function settingsRowHtml(emp) {
+  const safeEmail = emp.email.replace(/'/g, "\\'");
+  return `
+    <tr data-email="${escapeHtml(emp.email)}">
+      <td class="cell-name">${escapeHtml(emp.name)}</td>
+      <td>${escapeHtml(emp.email)}</td>
+      <td class="cell-phone">${escapeHtml(emp.phone || "")}</td>
+      <td class="cell-department">${escapeHtml(emp.department || "")}</td>
+      <td class="cell-language">${escapeHtml(emp.language || "ar")}</td>
+      <td>
+        <button class="btn-ghost row-btn" onclick="startEditRow('${safeEmail}')">${t("btnEdit")}</button>
+        <button class="btn-ghost row-btn danger" onclick="deleteEmployeeRow('${safeEmail}')">${t("btnDelete")}</button>
+      </td>
+    </tr>`;
+}
+
+function startEditRow(email) {
+  const row = document.querySelector(`tr[data-email="${CSS.escape(email)}"]`);
+  const name = row.querySelector(".cell-name").textContent;
+  const phone = row.querySelector(".cell-phone").textContent;
+  const department = row.querySelector(".cell-department").textContent;
+  const language = row.querySelector(".cell-language").textContent;
+
+  row.innerHTML = `
+    <td><input class="settings-input-inline" id="edit-name" value="${escapeHtml(name)}"></td>
+    <td>${escapeHtml(email)}</td>
+    <td><input class="settings-input-inline" id="edit-phone" value="${escapeHtml(phone)}"></td>
+    <td><input class="settings-input-inline" id="edit-department" value="${escapeHtml(department)}"></td>
+    <td>
+      <select class="settings-input-inline" id="edit-language">
+        <option value="ar" ${language === "ar" ? "selected" : ""}>AR</option>
+        <option value="en" ${language === "en" ? "selected" : ""}>EN</option>
+      </select>
+    </td>
+    <td>
+      <button class="btn-accent row-btn" onclick="saveEditRow('${email.replace(/'/g, "\\'")}')">${t("btnSave")}</button>
+      <button class="btn-ghost row-btn" onclick="fetchSettingsEmployees()">${t("btnCancelEdit")}</button>
+    </td>`;
+}
+
+async function saveEditRow(email) {
+  const payload = {
+    name: document.getElementById("edit-name").value,
+    phone: document.getElementById("edit-phone").value,
+    department: document.getElementById("edit-department").value,
+    language: document.getElementById("edit-language").value,
+  };
+  await fetch(apiUrl(`/api/settings/employees/${encodeURIComponent(email)}`), {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+  await fetchSettingsEmployees();
+}
+
+async function deleteEmployeeRow(email) {
+  if (!confirm(email)) return;
+  await fetch(apiUrl(`/api/settings/employees/${encodeURIComponent(email)}`), { method: "DELETE" });
+  await fetchSettingsEmployees();
+}
+
+async function addEmployee() {
+  const payload = {
+    name: document.getElementById("new-emp-name").value.trim(),
+    email: document.getElementById("new-emp-email").value.trim(),
+    phone: document.getElementById("new-emp-phone").value.trim(),
+    department: document.getElementById("new-emp-department").value.trim(),
+    language: document.getElementById("new-emp-language").value,
+  };
+  if (!payload.name || !payload.email) { alert(t("fieldName") + " / " + t("fieldEmail")); return; }
+
+  const res = await fetch(apiUrl("/api/settings/employees"), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+  if (!res.ok) { const err = await res.json(); alert(err.detail || "Failed"); return; }
+
+  ["new-emp-name", "new-emp-email", "new-emp-phone", "new-emp-department"].forEach(id => document.getElementById(id).value = "");
+  await fetchSettingsEmployees();
+}
+
+// ============ Knowledge Base (Settings tab) ============
+async function fetchKnowledgeBase() {
+  const res = await fetch(apiUrl("/api/settings/knowledge-base"));
+  const data = await res.json();
+  document.getElementById("kb-textarea").value = data.content;
+}
+
+async function saveKnowledgeBase() {
+  const content = document.getElementById("kb-textarea").value;
+  await fetch(apiUrl("/api/settings/knowledge-base"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  alert(LANG === "ar" ? "تم حفظ السياسات ✓" : "Policies saved ✓");
+}
+
+// ============ Init ============
+(async function init() {
+  await loadTask();
+  applyStaticTranslations();
+  updateNotifButton();
+  fetchEmployees();
+  fetchAudit();
+  fetchSchedule();
+  setInterval(fetchSchedule, 15000);
+  setInterval(fetchPendingQuestions, 10000); // يفحص كل 10 ثواني حتى لو المدير مش في تاب Monitor
+})();
+</script>
+
+</body>
+</html>
