@@ -23,13 +23,13 @@ TASK = {
     "deadline_en": "Wednesday, September 2, 2026",
     "deadline_iso": "2026-09-02T23:59:59",
     "action_link": "",
-    "sender_name": "منى حسن",
-    "sender_name_en": "Mona Hassan",
+    "sender_name": "محمد العاشق",
+    "sender_name_en": "Mohamed El-Asheq",
     "sender_role": "HR Manager",
     "sender_role_en": "HR Manager",
 
     # إعدادات خاصة بمتابعة التقارير
-    "submission_email": "hr-reports@example.com",  # الإيميل اللي الموظفين هيبعتوا عليه
+    "submission_email": "kicouae.ai@gmail.com",  # الإيميل اللي الموظفين هيبعتوا عليه
     "subject_keyword": "تقرير مارس",  # الكلمة المفتاحية اللي بندور عليها في عنوان الإيميل
     "check_since_date": "2026-08-25",  # ندور على إيميلات بعد التاريخ ده بس
 }
