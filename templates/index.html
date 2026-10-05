@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HR Notify Agent</title>
+  <title>Nova</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,18 +12,19 @@
        يقدر يتفصل كملف ثابت لوحده على أي هوست، من غير ما يحتاج Python يرندر الصفحة -->
   <script id="task-data-fallback" type="application/json">{{ task | tojson }}</script>
 
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="brand" data-i18n="brand">HR Notify Agent</div>
-      <div class="brand-sub" data-i18n="brandSub">Control Panel</div>
-    </div>
-    <div style="display:flex; gap:10px;">
-      <button class="lang-toggle" id="notif-toggle" onclick="requestNotificationPermission()" data-i18n="enableNotifs">🔔 Enable notifications</button>
-      <button class="lang-toggle" id="lang-toggle" onclick="toggleLanguage()">العربية</button>
-    </div>
-  </header>
+  <!-- ============ Intro animation ============ -->
+  <div class="intro" id="intro" aria-hidden="true">
+    <span class="logo-mark"></span>
+    <div class="intro-name" id="intro-name"></div>
+    <div class="intro-tag" data-i18n="introTagline">Your HR Intelligence Partner</div>
+  </div>
 
+  <!-- ============ Sidebar (collapsed rail) ============ -->
   <nav class="tab-nav">
+    <div class="rail-logo">
+      <span class="logo-mark"></span>
+      <span class="rail-name" data-i18n="brand">Nova</span>
+    </div>
     <button class="tab-btn active" data-tab="chat" onclick="switchTab('chat')">
       <span data-i18n="tabChat">Chat</span>
     </button>
@@ -34,24 +35,50 @@
       <span data-i18n="tabSettings">Settings</span>
     </button>
   </nav>
+  <div class="nav-scrim" onclick="toggleNav()"></div>
+
+  <!-- ============ Header ============ -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="lang-toggle" id="menu-btn" onclick="toggleNav()" aria-label="Menu">Menu</button>
+      <div>
+        <div class="brand" data-i18n="brand">Nova</div>
+        <div class="brand-sub" data-i18n="brandSub">Control Panel</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="lang-toggle" id="lang-toggle" onclick="toggleLanguage()" aria-label="Language / اللغة">العربية</button>
+      <button class="lang-toggle" id="notif-toggle" onclick="requestNotificationPermission()" aria-label="Notifications" data-i18n="enableNotifs">Notifications</button>
+      <button class="lang-toggle" id="login-btn" onclick="" aria-label="Login">Login</button>
+    </div>
+  </header>
 
   <main>
 
     <!-- =================== CHAT TAB =================== -->
     <section class="tab-panel" id="tab-chat">
       <div class="chat-card">
-        <div class="chat-intro">
-          <div>
-            <div class="chat-intro-title" data-i18n="chatIntroTitle">Tell the agent what you need</div>
-            <div class="chat-intro-sub" data-i18n="chatIntroSub">Type or speak a command — e.g. "Email the Sales team asking for this week's numbers by Thursday"</div>
-          </div>
+
+        <div class="chat-toolbar">
           <button class="btn-ghost" id="new-conversation-btn" onclick="resetConversation()" data-i18n="newConversation">New conversation</button>
         </div>
+
+        <div class="chat-intro">
+          <div class="chat-intro-title" data-i18n="chatIntroTitle">What can I take care of for you?</div>
+          <div class="chat-intro-sub" data-i18n="chatIntroSub">Ask questions, create HR tasks, organize employee information, draft communications, and turn everyday HR work into simple conversations.</div>
+        </div>
+
         <div class="chat-messages" id="chat-messages"></div>
+
         <div class="chat-input-row">
-          <button class="mic-btn" id="mic-btn" onclick="toggleMic()" title="Voice input">
-            <svg id="mic-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <button class="mic-btn" id="mic-btn" onclick="toggleMic()" title="Voice input" aria-label="Voice input">
+            <svg id="mic-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
+          <input type="text" id="chat-input" class="chat-input" data-i18n-placeholder="chatPlaceholder" placeholder="Type a command…">
+          <button class="btn-primary" id="chat-send-btn" onclick="sendChatMessage()" data-i18n="chatSend" aria-label="Send">Send</button>
+        </div>
+
+        <div class="chat-options">
           <select id="mic-lang-select" class="mic-lang-select">
             <option value="ar-EG">AR (Egypt)</option>
             <option value="ar-SA">AR (Standard/Saudi)</option>
@@ -62,8 +89,6 @@
             <option value="browser">STT: Browser (Google)</option>
             <option value="server">STT: Server (OpenAI)</option>
           </select>
-          <input type="text" id="chat-input" class="chat-input" data-i18n-placeholder="chatPlaceholder" placeholder="Type a command…">
-          <button class="btn-primary" id="chat-send-btn" onclick="sendChatMessage()" data-i18n="chatSend">Send</button>
         </div>
         <div id="mic-debug" class="mic-debug"></div>
       </div>
@@ -165,6 +190,13 @@
     </section>
 
   </main>
+
+<!-- ╔══════════════════════════════════════════════════════════════╗
+     ║  الصق هنا الـ <script> بتوع ملفك الأصلي بدون أي تعديل:       ║
+     ║  1) السكريبت الأول (API_BASE + apiUrl)                      ║
+     ║  2) السكريبت التاني (I18N + كل الدوال لحد init)             ║
+     ║  ولازم يفضل سكريبت "Nova" اللي تحت ده بعدهم مباشرة          ║
+     ╚══════════════════════════════════════════════════════════════╝ -->
 
 <script>
 // ============================================================
@@ -1112,6 +1144,58 @@ async function saveKnowledgeBase() {
   fetchSchedule();
   setInterval(fetchSchedule, 15000);
   setInterval(fetchPendingQuestions, 10000); // يفحص كل 10 ثواني حتى لو المدير مش في تاب Monitor
+})();
+</script>
+
+<!-- ============ Nova: اسم المساعد + الإنترو + السايدبار (سكريبت مستقل) ============ -->
+<script>
+// ===== غيّر اسم المساعد والعبارة التسويقية من هنا فقط =====
+const ASSISTANT = {
+  name:    { en: "Nova", ar: "نوفا" },
+  tagline: { en: "Your HR Intelligence Partner", ar: "شريكك الذكي في الموارد البشرية" },
+};
+
+// ترجمات جديدة/معدّلة تتضاف فوق الـ I18N الأصلي
+Object.assign(I18N.en, {
+  brand: ASSISTANT.name.en,
+  introTagline: ASSISTANT.tagline.en,
+  chatIntroTitle: "What can I take care of for you?",
+  chatIntroSub: "Ask questions, create HR tasks, organize employee information, draft communications, and turn everyday HR work into simple conversations.",
+});
+Object.assign(I18N.ar, {
+  brand: ASSISTANT.name.ar,
+  introTagline: ASSISTANT.tagline.ar,
+  chatIntroTitle: "ما الذي تود أن أتولّاه عنك اليوم؟",
+  chatIntroSub: "اطرح أسئلتك، وأنشئ مهام الموارد البشرية، ونظّم بيانات الموظفين، وصُغ المراسلات، وحوّل أعمال الموارد البشرية اليومية إلى محادثات بسيطة.",
+});
+
+// السايدبار: فتح/قفل
+function toggleNav() { document.body.classList.toggle("nav-open"); }
+(function () {
+  const originalSwitchTab = switchTab;
+  switchTab = function (name) { originalSwitchTab(name); document.body.classList.remove("nav-open"); };
+})();
+
+// الإنترو: اللوجو يظهر fade، الاسم يتكتب حرف حرف، وبعدها العبارة
+(function runIntro() {
+  const intro = document.getElementById("intro");
+  const nameEl = document.getElementById("intro-name");
+  const name = ASSISTANT.name[LANG] || ASSISTANT.name.en;
+  document.title = name;
+
+  const finish = () => { intro.classList.add("done"); setTimeout(() => intro.remove(), 700); };
+  intro.addEventListener("click", finish);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { finish(); return; }
+
+  let i = 0;
+  nameEl.classList.add("typing");
+  setTimeout(function type() {
+    nameEl.textContent = name.slice(0, ++i);
+    if (i < name.length) { setTimeout(type, 140); return; }
+    nameEl.classList.remove("typing");
+    intro.classList.add("show-tag");
+    setTimeout(finish, 1500);
+  }, 900);
 })();
 </script>
 
