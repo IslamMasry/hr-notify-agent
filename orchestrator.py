@@ -11,7 +11,7 @@ import json
 import requests
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = "claude-sonnet-5"
+ANTHROPIC_MODEL = "claude-sonnet-5-5"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 MOCK_MODE = os.getenv("MOCK_CLAUDE", "false").lower() == "true"
 
